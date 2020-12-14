@@ -40,7 +40,7 @@ class RawCorpusIter:
         else:
             raise StopIteration
 
-def convert_raw_corpus_to_df(path_to_corpus):
+def convert_raw_corpus_to_df(path_to_corpus, clean = False):
     """ Converts a raw corpus to a pandas dataframe. 
     
     The function assumes that the raw corpus is a directory with every document
@@ -48,15 +48,24 @@ def convert_raw_corpus_to_df(path_to_corpus):
     every row corresponds to a single sentence in the corpus. The dataframe
     contains columns 'document_index' and 'sentence_index' to uniquely identify
     each sentence, as well as the column 'date' which corresponds to the date
-    when the document was published.
+    when the document was published. If the flag <clean> is set to true, the sentences 
+    in the data frame
         
     Args:
         path_to_corpus (str): path to the directory containing the corpus
+        clean (bool): flag whether to clean the sentence
     
     Returns:
         pandas.DataFrame: containing the corpus subdivided into sentences 
-    
+
     """
+
+    def is_accepted(token):
+        output = token.is_punct
+        output |= token.is_space
+        output |= token.is_stop
+        return not output 
+
     corpus = RawCorpusIter(path_to_corpus)
 
     nlp = spacy.load("es_core_news_sm", disable=['ner', 'parser'])
@@ -71,9 +80,13 @@ def convert_raw_corpus_to_df(path_to_corpus):
         doc = nlp(text)
         sentence_index = 0
         for sentence in doc.sents:
-            stripped_sentence = sentence.text.strip()
-            if stripped_sentence != "":
-                sentences.append(stripped_sentence)
+            if clean:
+                filtered_words = [token.lemma_.lower() for token in sentence if is_accepted(token)]    
+                cleaned_sentence = " ".join(filtered_words)
+            else:
+                cleaned_sentence = sentence.text.strip() 
+            if cleaned_sentence != "":
+                sentences.append(cleaned_sentence)
                 sentence_indices.append(sentence_index)
                 sentence_index+=1
         document_indices += [document_id] * sentence_index
@@ -86,14 +99,15 @@ def convert_raw_corpus_to_df(path_to_corpus):
 @click.command()
 @click.argument('input_filepath', type=click.Path(exists=True))
 @click.argument('output_filepath', type=click.Path())
-def main(input_filepath, output_filepath):
+@click.option('--clean/--no-clean', default=False, help="Make the senteces lower case and remove punctuation")
+def main(input_filepath, output_filepath, clean):
     """ Runs data processing scripts to turn raw data from (../raw) into
         cleaned data ready to be analyzed (saved in ../processed).
     """
     logger = logging.getLogger(__name__)
     logger.info('making final data set from raw data')
 
-    df = convert_raw_corpus_to_df(input_filepath)
+    df = convert_raw_corpus_to_df(input_filepath, clean)
     df.to_csv(output_filepath)
 
 
