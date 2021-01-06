@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import re
 import pandas
 import spacy
 import click
@@ -68,33 +69,49 @@ def convert_raw_corpus_to_df(path_to_corpus, clean = False):
 
     corpus = RawCorpusIter(path_to_corpus)
 
-    nlp = spacy.load("es_core_news_sm", disable=['ner', 'parser'])
-    sentencizer = spacy.pipeline.Sentencizer()
-    nlp.add_pipe(sentencizer)
+    nlp = spacy.load("es_core_news_sm", disable=['ner'])
+    # TODO: Spacy v2 does not use POS tags when lemmatizing Spanish, this
+    # should be addressed in v3
 
-    sentences = []
+    raw_sentences = []
+    cleaned_sentences = []
     sentence_indices = []
     document_indices = []
     dates = []
     for document_id, (date, text) in enumerate(corpus):
+        # In the Zapatista corpus hypthen is often used to indicated
+        # speach instead of n-dash, but spacy does not recognise it as
+        # punctuation. Replace hypthen at the start of a sentence by an n-dash
+        text = re.sub('^-', '–', text)  
+        text = re.sub('(\s)-', '\g<1>–', text)
         doc = nlp(text)
         sentence_index = 0
         for sentence in doc.sents:
-            if clean:
-                filtered_words = [token.lemma_.lower() for token in sentence if is_accepted(token)]    
-                cleaned_sentence = " ".join(filtered_words)
-            else:
-                cleaned_sentence = sentence.text.strip() 
-            if cleaned_sentence != "":
-                sentences.append(cleaned_sentence)
+            raw_sentence = sentence.text.strip()  
+            if raw_sentence != "":
+                raw_sentences.append(raw_sentence)
                 sentence_indices.append(sentence_index)
                 sentence_index+=1
+                if clean:
+                    filtered_words = [token.lemma_.lower() for token in sentence if is_accepted(token)]    
+                    cleaned_sentences.append(" ".join(filtered_words))
         document_indices += [document_id] * sentence_index
         dates += [pandas.to_datetime(date[:10])] * sentence_index
     
-    return pandas.DataFrame({'document_index':document_indices, 'sentence_index': sentence_indices, 'sentence':sentences, 'date':dates})
+    if clean:
+        df = pandas.DataFrame({'document_index': document_indices,
+                               'sentence_index': sentence_indices,
+                               'raw_sentence': raw_sentences,
+                               'cleaned_sentence': cleaned_sentences,
+                               'date':dates})
+    else:
+        df = pandas.DataFrame({'document_index': document_indices,
+                               'sentence_index': sentence_indices,
+                               'raw_sentence': raw_sentences,
+                               'cleaned_sentence': cleaned_sentences,
+                               'date':dates})
+    return df 
 
-    return df
 
 @click.command()
 @click.argument('input_filepath', type=click.Path(exists=True))
@@ -108,7 +125,7 @@ def main(input_filepath, output_filepath, clean):
     logger.info('making final data set from raw data')
 
     df = convert_raw_corpus_to_df(input_filepath, clean)
-    df.to_csv(output_filepath)
+    df.to_csv(output_filepath, index=False)
 
 
 if __name__ == '__main__':
