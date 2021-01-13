@@ -7,6 +7,7 @@ import click
 import logging
 from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
+from gensim.models.phrases import Phrases, Phraser
 
 class RawCorpusIter:
     """ An iterator of a raw corpus.
@@ -112,11 +113,33 @@ def convert_raw_corpus_to_df(path_to_corpus, clean = False):
     df = df.dropna().reset_index(drop=True)
     return df 
 
+def combine_phrases_in_corpus(corpus_df, column, min_count=75):
+    """ Use gensim phrases to find phrases in the corpus.
+
+    Args:
+        corpus_df (pandas.DataFrame): the input corpus 
+        column (str): the name of the column to be processed
+        min_count (int): min_count hyperparameter of gensim module
+    """
+    try:
+        sentences = [sent.split() for sent in corpus_df[column]]
+    except KeyError:
+        print(f"{column} is not a name of a column of the input dataframe")
+
+    phrases_model = Phrases(sentences, min_count=min_count, progress_per=10000)
+    phrases_model = Phraser(phrases_model)
+
+    sentences_with_phrases = [" ".join(sent) for sent in phrases_model[sentences]]
+
+    corpus_df[column + "_with_phrases"] = sentences_with_phrases
+
+
 @click.command()
 @click.argument('input_filepath', type=click.Path(exists=True))
 @click.argument('output_filepath', type=click.Path())
 @click.option('--clean/--no-clean', default=False, help="Make the senteces lower case and remove punctuation")
-def main(input_filepath, output_filepath, clean):
+@click.option('--phrases/--no-phrases', default=False, help="Combine commonly used phrases into a single token")
+def main(input_filepath, output_filepath, clean, phrases):
     """ Runs data processing scripts to turn raw data from (../raw) into
         cleaned data ready to be analyzed (saved in ../processed).
     """
@@ -124,8 +147,9 @@ def main(input_filepath, output_filepath, clean):
     logger.info('making final data set from raw data')
 
     df = convert_raw_corpus_to_df(input_filepath, clean)
+    if clean and phrases:
+        combine_phrases_in_corpus(df, 'cleaned_sentence')
     df.to_csv(output_filepath, index=False)
-
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
