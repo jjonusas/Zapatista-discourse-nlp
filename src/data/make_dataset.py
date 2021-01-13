@@ -8,8 +8,6 @@ import logging
 from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
 
-
-
 class RawCorpusIter:
     """ An iterator of a raw corpus.
     
@@ -104,14 +102,15 @@ def convert_raw_corpus_to_df(path_to_corpus, clean = False):
                                'raw_sentence': raw_sentences,
                                'cleaned_sentence': cleaned_sentences,
                                'date':dates})
+
     else:
         df = pandas.DataFrame({'document_index': document_indices,
                                'sentence_index': sentence_indices,
                                'raw_sentence': raw_sentences,
-                               'cleaned_sentence': cleaned_sentences,
                                'date':dates})
-    return df 
 
+    df = df.dropna().reset_index(drop=True)
+    return df 
 
 @click.command()
 @click.argument('input_filepath', type=click.Path(exists=True))
