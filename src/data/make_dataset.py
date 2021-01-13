@@ -98,14 +98,15 @@ def convert_raw_corpus_to_df(path_to_corpus, clean = False):
         dates += [pandas.to_datetime(date[:10])] * sentence_index
     
     if clean:
-        df = pandas.DataFrame({'document_index': document_indices,
+        df = pandas.DataFrame({'date':dates,
+                               'document_index': document_indices,
                                'sentence_index': sentence_indices,
                                'raw_sentence': raw_sentences,
-                               'cleaned_sentence': cleaned_sentences,
-                               'date':dates})
+                               'cleaned_sentence': cleaned_sentences })
 
     else:
-        df = pandas.DataFrame({'document_index': document_indices,
+        df = pandas.DataFrame({'date':dates,
+                               'document_index': document_indices,
                                'sentence_index': sentence_indices,
                                'raw_sentence': raw_sentences,
                                'date':dates})
