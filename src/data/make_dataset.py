@@ -2,6 +2,7 @@
 import os
 import re
 import pandas
+import numpy
 import spacy
 import click
 import logging
@@ -59,6 +60,8 @@ def convert_raw_corpus_to_df(path_to_corpus, clean = False):
         pandas.DataFrame: containing the corpus subdivided into sentences 
 
     """
+    logger = logging.getLogger(__name__)
+    logger.info("converting the corpus into a dataframe")
 
     def is_accepted(token):
         output = token.is_punct
@@ -110,11 +113,12 @@ def convert_raw_corpus_to_df(path_to_corpus, clean = False):
                                'sentence_index': sentence_indices,
                                'raw_sentence': raw_sentences,
                                'date':dates})
-
-    df = df.dropna().reset_index(drop=True)
+    size = len(df)
+    df = df[(df != '').all(1)]
+    logger.info(f'{size - len(df)} sentences were removed during cleaning')
     return df 
 
-def combine_phrases_in_corpus(corpus_df, column, min_count=75):
+def combine_phrases_in_corpus(corpus_df, column, min_count=75, n = 1):
     """ Use gensim phrases to find phrases in the corpus.
 
     Args:
@@ -127,10 +131,11 @@ def combine_phrases_in_corpus(corpus_df, column, min_count=75):
     except KeyError:
         print(f"{column} is not a name of a column of the input dataframe")
 
-    phrases_model = Phrases(sentences, min_count=min_count, progress_per=10000)
-    phrases_model = Phraser(phrases_model)
+    for i in range(n):
+        phrases_model = Phrases(sentences, min_count=min_count, progress_per=10000)
+        sentences = phrases_model[sentences]
 
-    sentences_with_phrases = [" ".join(sent) for sent in phrases_model[sentences]]
+    sentences_with_phrases = [" ".join(sent) for sent in sentences]
 
     corpus_df[column + "_with_phrases"] = sentences_with_phrases
 
@@ -140,7 +145,9 @@ def combine_phrases_in_corpus(corpus_df, column, min_count=75):
 @click.argument('output_filepath', type=click.Path())
 @click.option('--clean/--no-clean', default=False, help="Make the senteces lower case and remove punctuation")
 @click.option('--phrases/--no-phrases', default=False, help="Combine commonly used phrases into a single token")
-def main(input_filepath, output_filepath, clean, phrases):
+@click.option('--min_count', default=75, help="Min_count hyperparameter for gensim Phrases")
+@click.option('--n', default=1, help="The number of times bigrams are obtained")
+def main(input_filepath, output_filepath, clean, phrases, min_count, n):
     """ Runs data processing scripts to turn raw data from (../raw) into
         cleaned data ready to be analyzed (saved in ../processed).
     """
@@ -149,7 +156,7 @@ def main(input_filepath, output_filepath, clean, phrases):
 
     df = convert_raw_corpus_to_df(input_filepath, clean)
     if clean and phrases:
-        combine_phrases_in_corpus(df, 'cleaned_sentence')
+        combine_phrases_in_corpus(df, 'cleaned_sentence',min_count = min_count, n = n)
     df.to_csv(output_filepath, index=False)
 
 if __name__ == '__main__':
