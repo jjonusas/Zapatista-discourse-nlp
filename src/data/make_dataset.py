@@ -22,11 +22,13 @@ class RawCorpusIter:
     Returns:
         iterator: when iterated this iterator returns a pair containing the name of
             the file and the content of the file 
-    
     """
-    def __init__(self, path_to_corpus):
+
+    def __init__(self, path_to_corpus, info_freq = 10):
         self.corpus_dir = path_to_corpus
         self.files = os.listdir(self.corpus_dir)
+        self.logger = logging.getLogger(__name__) 
+        self.info_freq = info_freq
 
     def __iter__(self):
         self.file_num = 0
@@ -37,6 +39,8 @@ class RawCorpusIter:
             n = self.file_num
             self.file_num += 1
             with open(os.path.join(self.corpus_dir, self.files[n]), "r") as file:
+                if self.file_num % self.info_freq == 0:
+                    self.logger.info(f"PROGRESS: prcessing file {self.file_num} of {len(self.files)}")
                 return(self.files[n], file.read())
         else:
             raise StopIteration
@@ -61,7 +65,6 @@ def convert_raw_corpus_to_df(path_to_corpus, clean = False):
 
     """
     logger = logging.getLogger(__name__)
-    logger.info("converting the corpus into a dataframe")
 
     def is_accepted(token):
         output = token.is_punct
@@ -71,9 +74,7 @@ def convert_raw_corpus_to_df(path_to_corpus, clean = False):
 
     corpus = RawCorpusIter(path_to_corpus)
 
-    nlp = spacy.load("es_core_news_sm", disable=['ner'])
-    # TODO: Spacy v2 does not use POS tags when lemmatizing Spanish, this
-    # should be addressed in v3
+    nlp = spacy.load("es_dep_news_trf", disable=['ner'])
 
     raw_sentences = []
     cleaned_sentences = []
@@ -126,10 +127,11 @@ def combine_phrases_in_corpus(corpus_df, column, min_count=75, n = 1):
         column (str): the name of the column to be processed
         min_count (int): min_count hyperparameter of gensim module
     """
+    logger = logging.getLogger(__name__)
     try:
         sentences = [sent.split() for sent in corpus_df[column]]
     except KeyError:
-        print(f"{column} is not a name of a column of the input dataframe")
+        logger.error(f"{column} is not a name of a column of the input dataframe")
 
     for i in range(n):
         phrases_model = Phrases(sentences, min_count=min_count, progress_per=10000)
@@ -151,18 +153,31 @@ def main(input_filepath, output_filepath, clean, phrases, min_count, n):
     """ Runs data processing scripts to turn raw data from (../raw) into
         cleaned data ready to be analyzed (saved in ../processed).
     """
+
     logger = logging.getLogger(__name__)
-    logger.info('making final data set from raw data')
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    # console handler for logging
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # file handler for logging
+    file_handler = logging.FileHandler(output_filepath + ".log", encoding='utf-8')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    logger.info('converting the raw data into a dataframe')
+    logger.info(f'raw data: {input_filepath}, clean: {clean}, detecet phrases: {phrases}, min_count: {min_count}, bigram iterations: {n}')
 
     df = convert_raw_corpus_to_df(input_filepath, clean)
     if clean and phrases:
+        logger.info('combining phrases into tokens')
         combine_phrases_in_corpus(df, 'cleaned_sentence',min_count = min_count, n = n)
     df.to_csv(output_filepath, index=False)
 
 if __name__ == '__main__':
-    log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    logging.basicConfig(level=logging.INFO, format=log_fmt)
-
     # not used in this stub but often useful for finding various files
     project_dir = Path(__file__).resolve().parents[2]
 
